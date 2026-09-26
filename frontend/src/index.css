@@ -1,0 +1,29 @@
+:root {
+  color-scheme: light;
+  font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
+
+  --color-primary: #663399;
+  --color-primary-hover: #572b82;
+  --color-text: #1a1a1a;
+  --color-text-muted: #555;
+  --color-border: #e0e0e0;
+  --color-bg: #ffffff;
+  --color-bg-subtle: #f5f6f8;
+  --color-danger: #a12626;
+
+  --radius: 6px;
+  --spacing-sm: 0.5rem;
+  --spacing-md: 1rem;
+  --spacing-lg: 1.5rem;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  color: var(--color-text);
+  background: var(--color-bg);
+}

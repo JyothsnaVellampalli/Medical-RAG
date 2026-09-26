@@ -1,0 +1,14 @@
+.chunk-page {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: var(--spacing-lg);
+}
+
+.chunk-page h1 {
+  margin-top: 0;
+}
+
+.chunk-page__error {
+  color: var(--color-danger);
+  margin-top: var(--spacing-md);
+}

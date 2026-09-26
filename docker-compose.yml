@@ -1,0 +1,48 @@
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
+    container_name: med-rag-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - "9200:9200"
+    volumes:
+      - esdata:/usr/share/elasticsearch/data
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: med-rag-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollamadata:/root/.ollama
+
+  supabase-db:
+    image: pgvector/pgvector:pg17
+    container_name: med-rag-supabase-db
+    environment:
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=medical_rag
+    ports:
+      - "5432:5432"
+    volumes:
+      - supabasedata:/var/lib/postgresql/data
+
+  supabase-rest:
+    image: postgrest/postgrest:latest
+    container_name: med-rag-supabase-rest
+    environment:
+      - PGRST_DB_URI=postgres://postgres:postgres@supabase-db:5432/medical_rag
+      - PGRST_DB_SCHEMA=public
+      - PGRST_DB_ANON_ROLE=postgres
+    ports:
+      - "3001:3000"
+    depends_on:
+      - supabase-db
+
+volumes:
+  esdata:
+  ollamadata:
+  supabasedata:

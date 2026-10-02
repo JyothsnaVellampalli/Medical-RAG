@@ -27,9 +27,13 @@ class Settings(BaseSettings):
     eval_test_split: str = "test"
     eval_random_seed: int = 42
     supabase_db_url: str = "postgresql://postgres:postgres@localhost:5432/medical_rag"
-    # Not currently used (judge/generation both run locally via Ollama) — kept available in
-    # case an external judge is reintroduced later.
+    # Not currently used -- kept available in case a Gemini judge is reintroduced later.
     gemini_api_key: str | None = None
+    open_router_api_key: str | None = None
+    open_router_url: str = "https://openrouter.ai/api/v1"
+    open_router_generation_model: str = "nvidia/nemotron-3-ultra-550b-a55b:free"
+    open_router_judge_model: str = "typesafe/jev-1.13"
+    open_router_decisions_url: str = "https://openrouter.ai/api/alpha/decisions"
 
     # CORS
     frontend_origin: str = "http://localhost:3000"

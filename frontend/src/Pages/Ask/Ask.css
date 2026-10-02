@@ -134,11 +134,34 @@
   color: var(--color-text-muted);
 }
 
-.ask-page__eval-pending {
+.ask-page__eval-header {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
+}
+
+.ask-page__eval-section {
+  display: flex;
+  flex-direction: column;
   gap: var(--spacing-sm);
+}
+
+.ask-page__eval-section + .ask-page__eval-section {
+  margin-top: var(--spacing-md);
+  padding-top: var(--spacing-md);
+  border-top: 1px solid var(--color-border);
+}
+
+.ask-page__eval-section-title {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.ask-page__eval-pending-text {
+  margin: 0;
   font-size: 0.85rem;
   color: var(--color-text-muted);
 }

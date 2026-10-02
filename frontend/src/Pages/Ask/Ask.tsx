@@ -6,13 +6,14 @@ import CollapsiblePanel from '../../CommonComponents/CollapsiblePanel/Collapsibl
 import {
   askQuery,
   getQueryEvaluation,
+  type GenerationProvider,
   type QueryEvaluationStatus,
   type RetrieveResult,
   type SearchType,
 } from '../../api/client'
 import './Ask.css'
 
-const LLM_MODEL = (import.meta.env.VITE_LLM_MODEL as string | undefined) ?? 'not configured'
+// const LLM_MODEL = (import.meta.env.VITE_LLM_MODEL as string | undefined) ?? 'not configured'
 
 const STRATEGY_OPTIONS: { label: string; value: SearchType }[] = [
   { label: 'Lexical(BM25)', value: 'bm25' },
@@ -21,10 +22,49 @@ const STRATEGY_OPTIONS: { label: string; value: SearchType }[] = [
   { label: 'Hybrid(Weighted)', value: 'hybrid_weighted' },
 ]
 
+const PROVIDER_OPTIONS: { label: string; value: GenerationProvider }[] = [
+  { label: 'Local (Ollama)', value: 'ollama' },
+  { label: 'OpenRouter', value: 'openrouter' },
+]
+
+function EvalSection({
+  title,
+  state,
+  error,
+  metrics,
+}: {
+  title: string
+  state: QueryEvaluationStatus['state']
+  error: string | null
+  metrics: { label: string; value: number | null }[]
+}) {
+  return (
+    <div className="ask-page__eval-section">
+      <p className="ask-page__eval-section-title">{title}</p>
+      {state === 'Done' ? (
+        <ul className="ask-page__eval-list">
+          {metrics.map((m) => (
+            <li key={m.label}>
+              <strong>{m.label}</strong>
+              <span>{m.value?.toFixed(4)}</span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="ask-page__eval-pending-text">
+          {state === 'Error' ? `Failed: ${error ?? 'unknown error'}` : 'Evaluating…'}
+        </p>
+      )}
+    </div>
+  )
+}
+
 function Ask() {
   const [searchType, setSearchType] = useState<SearchType>('hybrid_rrf')
   const [weight, setWeight] = useState(0.5)
+  const [provider, setProvider] = useState<GenerationProvider>('ollama')
   const [evaluationEnabled, setEvaluationEnabled] = useState(false)
+  const [rerankEnabled, setRerankEnabled] = useState(false)
   const [query, setQuery] = useState('')
   const [answer, setAnswer] = useState<string | null>(null)
   const [citations, setCitations] = useState<RetrieveResult[]>([])
@@ -44,8 +84,21 @@ function Ask() {
     try {
       const payload =
         searchType === 'hybrid_weighted'
-          ? { search_type: searchType, query, weight, evaluation: evaluationEnabled }
-          : { search_type: searchType, query, evaluation: evaluationEnabled }
+          ? {
+              search_type: searchType,
+              query,
+              weight,
+              evaluation: evaluationEnabled,
+              provider,
+              rerank: rerankEnabled,
+            }
+          : {
+              search_type: searchType,
+              query,
+              evaluation: evaluationEnabled,
+              provider,
+              rerank: rerankEnabled,
+            }
       const result = await askQuery(payload)
       setAnswer(result.response)
       setCitations(result.citations)
@@ -71,7 +124,11 @@ function Ask() {
   }
 
   function handleEvaluationToggle(open: boolean) {
-    if (open && evaluationId && evaluationStatus?.state !== 'Done') {
+    const stillPending =
+      !evaluationStatus ||
+      evaluationStatus.state === 'Progress' ||
+      evaluationStatus.judge_state === 'Progress'
+    if (open && evaluationId && stillPending) {
       void fetchEvaluation(evaluationId)
     }
   }
@@ -85,7 +142,7 @@ function Ask() {
   return (
     <div className="ask-page">
       <h1>Ask your query</h1>
-      <p className="ask-page__subheading">LLM: {LLM_MODEL}</p>
+      {/* <p className="ask-page__subheading">LLM: {LLM_MODEL}</p> */}
 
       <div className="ask-page__config">
         <div className="ask-page__config-row">
@@ -94,6 +151,13 @@ function Ask() {
             value={searchType}
             onChange={(event) => setSearchType(event.target.value as SearchType)}
             aria-label="Retrieval strategy"
+          />
+
+          <Dropdown
+            options={PROVIDER_OPTIONS}
+            value={provider}
+            onChange={(event) => setProvider(event.target.value as GenerationProvider)}
+            aria-label="Generation provider"
           />
 
           {searchType === 'hybrid_weighted' && (
@@ -120,6 +184,15 @@ function Ask() {
               onChange={(event) => setEvaluationEnabled(event.target.checked)}
             />
             Evaluate this response
+          </label>
+
+          <label className="ask-page__eval-toggle">
+            <input
+              type="checkbox"
+              checked={rerankEnabled}
+              onChange={(event) => setRerankEnabled(event.target.checked)}
+            />
+            Rerank with Jev
           </label>
         </div>
 
@@ -162,24 +235,8 @@ function Ask() {
 
             {evaluationId && (
               <CollapsiblePanel title="Evaluation" defaultOpen={false} onToggle={handleEvaluationToggle}>
-                {evaluationStatus?.state === 'Done' ? (
-                  <ul className="ask-page__eval-list">
-                    <li>
-                      <strong>Faithfulness</strong>
-                      <span>{evaluationStatus.faithfulness?.toFixed(4)}</span>
-                    </li>
-                    <li>
-                      <strong>Answer relevancy</strong>
-                      <span>{evaluationStatus.answer_relevancy?.toFixed(4)}</span>
-                    </li>
-                  </ul>
-                ) : (
-                  <div className="ask-page__eval-pending">
-                    <span>
-                      {evaluationStatus?.state === 'Error'
-                        ? `Evaluation failed: ${evaluationStatus.error ?? 'unknown error'}`
-                        : 'Evaluating…'}
-                    </span>
+                <div className="ask-page__eval-header">
+                  {(evaluationStatus?.state === 'Progress' || evaluationStatus?.judge_state === 'Progress') && (
                     <button
                       type="button"
                       className="ask-page__eval-refresh"
@@ -190,8 +247,28 @@ function Ask() {
                     >
                       ⟳
                     </button>
-                  </div>
-                )}
+                  )}
+                </div>
+
+                <EvalSection
+                  title="Semantic (embedding-based)"
+                  state={evaluationStatus?.state ?? 'Progress'}
+                  error={evaluationStatus?.error ?? null}
+                  metrics={[
+                    { label: 'Faithfulness', value: evaluationStatus?.faithfulness ?? null },
+                    { label: 'Answer relevancy', value: evaluationStatus?.answer_relevancy ?? null },
+                  ]}
+                />
+
+                <EvalSection
+                  title="Jev Judge (typesafe/jev-1.13)"
+                  state={evaluationStatus?.judge_state ?? 'Progress'}
+                  error={evaluationStatus?.judge_error ?? null}
+                  metrics={[
+                    { label: 'Faithfulness', value: evaluationStatus?.judge_faithfulness ?? null },
+                    { label: 'Answer relevancy', value: evaluationStatus?.judge_answer_relevancy ?? null },
+                  ]}
+                />
               </CollapsiblePanel>
             )}
           </div>

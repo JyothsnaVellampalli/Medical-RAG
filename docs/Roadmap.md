@@ -118,8 +118,32 @@ Rule: one phase at a time. Stop at "Done when" and write docs/progress/phase-XX.
 - The `/query` api should retrieves data, pass it to llm for response, evalaute it and return LLM response, retrieved citations and evaluation result.
 
 
+[x] Phase10
+### Goal: Integrate open router.
+- Extend the LLM layer and evaluation layer to also support the open router models.
+- Use the `nvidia/nemotron-3-ultra:free` free model from openrouter to generate responses after fetching the chunks from elastic search
+- Use the `typesafe/jev-1.13` model from openrouter for evaluation.
 
-[ ] Phase10
+### Done When:
+- LLM and Evaluation layers supports the models from open router.
+- The `ask` page should use these openrouter models for response generation and evaluation.
+
+
+[x] Phase11
+### Goal: Add Jev as Reranker
+- Add a reranker layer that uses `typesafe/jev-1.13` for reranking.
+- After extracting the chunks from search engine, rerank them using `typesafe/jev-1.13`
+- Pass the chunks arranged in ranks to LLM.
+- Add checkbox UI in ask page to run reranker and pass this value as boolean in `/ask` api payload.
+- Update `/ask` api to hanlde rerank value in payload.
+
+### Done When:
+- A reranker layer has to be added that will rerank the chunks after retrieving
+- A UI should be added in `ask` page to toggle reranking.
+- `/ask` api has to be updated to accept the rerank boolean value.
+
+
+[ ] Phase12
 ### Goal: Query expansion
 - Add the query expansion layer.
 - Run the evals for 10 QA dataset without and without query expansion with the hybrid(RRF) retrieval.

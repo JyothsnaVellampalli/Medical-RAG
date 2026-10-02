@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
+import httpx
 import psycopg
 from elastic_transport import ConnectionError as ESConnectionError
 from fastapi import APIRouter, HTTPException
@@ -12,10 +13,12 @@ from pydantic import BaseModel
 from DataStore.elastic_search_store import store
 from Evaluation.evaluation_engine import evaluation_engine
 from Evaluation.evaluation_store import evaluation_store
+from Evaluation.llm_judge_metrics import judge_metrics
 from Evaluation.query_evaluation_store import query_evaluation_store
 from Evaluation.semantic_metrics import answer_relevancy, faithfulness
 from LLM.llm_query_layer import llm_query_layer
 from logger import get_logger
+from openrouter_client import OpenRouterError
 from Retrieval.retrieval_registry import retrieval_registry
 
 log = get_logger(__name__)
@@ -49,6 +52,8 @@ class QueryRequest(BaseModel):
     query: str
     weight: float | None = None
     evaluation: bool = False
+    provider: str = "ollama"
+    rerank: bool = False
 
 
 class QueryResponse(BaseModel):
@@ -63,6 +68,10 @@ class QueryEvaluationStatus(BaseModel):
     faithfulness: float | None = None
     answer_relevancy: float | None = None
     error: str | None = None
+    judge_state: str
+    judge_faithfulness: float | None = None
+    judge_answer_relevancy: float | None = None
+    judge_error: str | None = None
 
 
 class EvaluateRequest(BaseModel):
@@ -174,14 +183,27 @@ def _run_query_evaluation(
         log.error("[Eval] evaluation_id=%s - failed: %s", evaluation_id, e)
         query_evaluation_store.set_error(evaluation_id, f"{type(e).__name__}: {e}")
 
+    log.info("[Judge] evaluation_id=%s - computing LLM-judge scores via OpenRouter", evaluation_id)
+    try:
+        scores = judge_metrics(query_text, response_text, contexts)
+        query_evaluation_store.set_judge_done(
+            evaluation_id, scores["judge_faithfulness"], scores["judge_answer_relevancy"]
+        )
+        log.info("[Judge] evaluation_id=%s - done: %s", evaluation_id, scores)
+    except Exception as e:
+        log.error("[Judge] evaluation_id=%s - failed: %s", evaluation_id, e)
+        query_evaluation_store.set_judge_error(evaluation_id, f"{type(e).__name__}: {e}")
+
 
 @router.post("/query", response_model=QueryResponse)
 def query(payload: QueryRequest) -> dict[str, Any]:
     log.info(
-        "[API] POST /query - strategy=%s query=%r evaluation=%s",
+        "[API] POST /query - strategy=%s query=%r evaluation=%s provider=%s rerank=%s",
         payload.search_type,
         payload.query,
         payload.evaluation,
+        payload.provider,
+        payload.rerank,
     )
     start = time.monotonic()
     try:
@@ -189,6 +211,8 @@ def query(payload: QueryRequest) -> dict[str, Any]:
             search_type=payload.search_type,
             query_text=payload.query,
             weight=payload.weight if payload.weight is not None else 0.5,
+            provider=payload.provider,
+            rerank=payload.rerank,
         )
     except ValueError as e:
         log.error("[API] POST /query - invalid request: %s", e)
@@ -199,6 +223,9 @@ def query(payload: QueryRequest) -> dict[str, Any]:
     except ConnectionError as e:
         log.error("[API] POST /query - Ollama unavailable: %s", e)
         raise HTTPException(status_code=503, detail="LLM (Ollama) is unavailable") from e
+    except (httpx.HTTPError, OpenRouterError) as e:
+        log.error("[API] POST /query - OpenRouter unavailable: %s", e)
+        raise HTTPException(status_code=503, detail="LLM (OpenRouter) is unavailable") from e
     result["latency_seconds"] = time.monotonic() - start
     log.info(
         "[API] POST /query - answered with %d citation(s) in %.2fs",
@@ -229,12 +256,21 @@ def get_query_evaluation(evaluation_id: UUID) -> dict[str, Any]:
     if record is None:
         log.error("[API] GET /get_query_evaluation/%s - not found", evaluation_id)
         raise HTTPException(status_code=404, detail="Unknown evaluation_id")
-    log.info("[API] GET /get_query_evaluation/%s - state=%s", evaluation_id, record.state)
+    log.info(
+        "[API] GET /get_query_evaluation/%s - state=%s judge_state=%s",
+        evaluation_id,
+        record.state,
+        record.judge_state,
+    )
     return {
         "state": record.state,
         "faithfulness": record.faithfulness,
         "answer_relevancy": record.answer_relevancy,
         "error": record.error,
+        "judge_state": record.judge_state,
+        "judge_faithfulness": record.judge_faithfulness,
+        "judge_answer_relevancy": record.judge_answer_relevancy,
+        "judge_error": record.judge_error,
     }
 
 

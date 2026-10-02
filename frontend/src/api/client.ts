@@ -20,6 +20,7 @@ export interface RetrieveResult {
 }
 
 export type SearchType = 'bm25' | 'semantic' | 'hybrid_weighted' | 'hybrid_rrf'
+export type GenerationProvider = 'ollama' | 'openrouter'
 
 export interface RetrieveRequest {
   search_type: SearchType
@@ -32,6 +33,8 @@ export interface QueryRequest {
   query: string
   weight?: number
   evaluation: boolean
+  provider: GenerationProvider
+  rerank: boolean
 }
 
 export interface QueryResponse {
@@ -46,6 +49,10 @@ export interface QueryEvaluationStatus {
   faithfulness: number | null
   answer_relevancy: number | null
   error: string | null
+  judge_state: 'Progress' | 'Done' | 'Error'
+  judge_faithfulness: number | null
+  judge_answer_relevancy: number | null
+  judge_error: string | null
 }
 
 export interface EvaluateRequest {
